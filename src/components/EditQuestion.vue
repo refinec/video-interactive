@@ -1,5 +1,5 @@
 <template>
-  <div class="question-content">
+  <div class="question-content" v-if="videoListLen > 0">
     <template v-if="question_arr.length > 0">
       <el-menu
         :default-active="activeIndex"
@@ -573,6 +573,7 @@ const concat = {
 };
 export default {
   name: "EditQuestion",
+  props: ["videoListLen"],
   data() {
     return {
       activeIndex: "2",

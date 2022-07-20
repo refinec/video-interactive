@@ -33,7 +33,7 @@ ipcMain.on("open-save-dialog", (event, arg) => {
     })
     .then(({ canceled, filePath }) => {
       if (!canceled) {
-        writeFiile({
+        exportFile({
           savePath: filePath,
           xml: arg.xml,
           videoPath: arg.video_info.video_path,
@@ -45,8 +45,8 @@ ipcMain.on("open-save-dialog", (event, arg) => {
 });
 ipcMain.on("del-cur-video", (event, video_name) => {
   fs.rm(path.join(__dirname, TEMPDIR, path.basename(video_name, path.extname(video_name))), {
-        recursive: true
-      }, (err) => {
+    recursive: true
+  }, (err) => {
     if (err) {
       return console.error('err', err);
     }
@@ -54,20 +54,24 @@ ipcMain.on("del-cur-video", (event, video_name) => {
 })
 ipcMain.on("transform-mp3", (event, videoUrl) => {
   const video_name = path.basename(videoUrl, path.extname(videoUrl));
-  fs.readFile(
-    path.join(__dirname, TEMPDIR, video_name, video_name + ".mp3"),
-    (err, data) => {
-      if (err) {
-        return video2mp3(path.join(videoUrl), video_name, event);
+  fs.mkdir(path.join(__dirname, TEMPDIR, video_name), { recursive: true }, (err) => {
+    if (err) console.log('tempCache文件夹：', err)
+    fs.readFile(
+      path.join(__dirname, TEMPDIR, video_name, video_name + ".mp3"),
+      (err, data) => {
+        if (err) {
+          return video2mp3(path.join(videoUrl), video_name, event);
+        }
+        event.reply("transform-mp3-reply", {
+          temp_mp3_url: data,
+          imgPath: createBase64Sync(path.join(__dirname, TEMPDIR, video_name, video_name + ".jpg"))
+        });
       }
-      event.reply("transform-mp3-reply", {
-        temp_mp3_url: data,
-        imgName: video_name
-      });
-    }
-  );
+    );
+  });
+
 });
-function writeFiile({ savePath, xml, videoPath, v_w, v_h }, event) {
+function exportFile({ savePath, xml, videoPath, v_w, v_h }, event) {
   try {
     let saveArr = [];
     for (const type in saveFile) {
@@ -127,18 +131,18 @@ function video2mp3(source_video_path, video_name, event) {
         //   progress.percent
         // );
       })
-      .on("end", function (stdout, stderr) {
-        console.log("解析完成!", stdout, stderr, " !!");
+      .on("end", function () {
+        // console.log("解析完成!", stdout, stderr, " !!");
         try {
           let data = fs.readFileSync(mp3SavePath);
           event.reply("transform-mp3-reply", {
             temp_mp3_url: data,
-            imgName: video_name
+            imgPath: createBase64Sync(path.join(__dirname, TEMPDIR, video_name, video_name + ".jpg"))
           });
         } catch (error) {
           event.reply("transform-mp3-reply", {
             temp_mp3_url: null,
-            imgName: video_name
+            imgPath: null
           });
         }
       })
@@ -172,5 +176,15 @@ function video2jpg(video_path, destinationFolder, file_name, v_w, v_h) {
     });
   } catch (error) {
     console.error(error);
+  }
+}
+
+function createBase64Sync(imgPath) {
+  try {
+    const readable = fs.readFileSync(path.join(imgPath), 'binary');
+    const base64 = Buffer.from(readable, 'binary').toString('base64');
+    return "data:image/jpg;base64," + base64;
+  } catch (error) {
+    return "";
   }
 }

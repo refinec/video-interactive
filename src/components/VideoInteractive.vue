@@ -20,11 +20,13 @@
               <i class="el-icon-delete"></i>
             </div>
             <video
+              :id="'video-' + index"
               height="60"
               width="100"
-              :poster="video.poster ? require('../../static/tempCache/' + video.poster + '/' + video.poster + '.jpg') : null"
               :src="videoURL(video.file)"
+              :poster="video.poster"
             ></video>
+            <!-- :poster="video.poster ? require('../../static/tempCache/'+ CACHE_PATH + '/' + video.poster + '/' + video.poster + '.jpg') : null" -->
             <div class="thumbnail-title">
               <i class="el-icon-video-camera"></i>
               {{ video.name }}
@@ -56,7 +58,7 @@
         </div>
       </el-col>
       <el-col :span="7" class="question-wrapper">
-        <edit-question />
+        <edit-question :videoListLen="video_list.length" />
       </el-col>
     </el-row>
     <el-row type="flex" style="height: 66px">
@@ -182,28 +184,32 @@
         <div id="slider-wrapper">
           <div
             ref="contextMenu"
+            id="contextMenu"
             class="context-menu"
-            v-if="menuVisible"
+            v-show="menuVisible"
             :style="menuStyle"
             @blur="closeMenu"
             @mouseleave="closeMenu"
           >
-            <div @click="addVideoQuestion(current_video.cur_time)">将测验添加到时间线</div>
+            <div v-if="menuType === 'flag'" @click="delVideoQuestion(cur_test_index)">删除测验题</div>
+            <div v-else @click="addVideoQuestion(current_video.cur_time)">将测验添加到时间线</div>
           </div>
           <div id="pips-range" ref="pipsRange">
             <div class="add-bg" @mouseenter="circleIsIn" @mouseleave="showAddCircle = false">
               <div class="add-circle" v-show="showAddCircle" v-slide>
-                <img :src="require('../assets/img/add.png')" width="13" height="13" />
+                <img src="../assets/img/add.png" width="13" height="13" />
               </div>
             </div>
             <div
               v-for="(q, i) in question_arr"
-              :key="i"
+              :key="q.q_i"
               v-drag:[i]="`${secondsToPixels(q.cur_time)}`"
               class="test-point"
+              :data-index="i"
               :data-title="q.q_title"
               :title="q.q_title"
               :style="{ '--bg': selectTest(i), background: selectTest(i) }"
+              @contextmenu.prevent="showMenu($event, 'flag')"
             ></div>
           </div>
           <!-- <div id="wave-timeline"></div> -->
@@ -252,11 +258,13 @@ export default {
         play: false,
         isSelfTimeupdate: true,
         triggerName: null,
+        isPlayEnd: false,
       },
       direction: "stop",
       direction_value: 0,
       cur_test_index: -1,
       menuVisible: false,
+      menuType: "",
       menuStyle: {
         top: 0,
         left: 0,
@@ -273,6 +281,9 @@ export default {
   computed: {
     question_arr() {
       return this.$store.state.question_arr;
+    },
+    question_len() {
+      return this.$store.state.question_len;
     },
     canPreviousFrame() {
       return !!this.current_video.src && this.current_video.cur_time > 0;
@@ -300,6 +311,9 @@ export default {
     slideDirection() {
       return this.direction;
     },
+    totalVideoTime() {
+      return Math.floor(this.current_video.total_time);
+    }
   },
   directives: {
     slide: {
@@ -358,8 +372,9 @@ export default {
         };
         weakMap.set(el, { move, up });
         el.onmousedown = function (e) {
-          vnode.context.cur_test_index = binding.arg;
-          vnode.context.setCurQuestionIndex(binding.arg);
+          const posi = Number(e.target.dataset.index);
+          vnode.context.cur_test_index = posi;
+          vnode.context.setCurQuestionIndex(posi);
           mouse_is_down = true;
           el.style.zIndex = 5;
           let event = e || window.event;
@@ -384,9 +399,10 @@ export default {
     },
   },
   mounted() {
-    this.sliderListener();
     this.initWavesurfer();
     this.initNoUiSlider();
+
+    this.sliderListener();
     this.onWavesurferHeight();
     window.addEventListener("resize", this.onWavesurferHeight);
     this.$once("hook:beforeDestroy", () => {
@@ -409,13 +425,7 @@ export default {
         },
       });
       this.$refs.pipsRange.noUiSlider.on("slide", (values, handle) => {
-        if (
-          !(
-            player &&
-            playlist &&
-            this.current_video.fileName
-          )
-        ) {
+        if (!(player && playlist && this.current_video.fileName)) {
           return;
         }
         this.allPause();
@@ -541,9 +551,9 @@ export default {
           "视频文件" + name + "已加载" + percent.toFixed(2) + "%"
         );
       });
-      playlistEmitter.on("audiosourcesloaded", () => {
-        // console.log("解码完成.");
-      });
+      // playlistEmitter.on("audiosourcesloaded", () => {
+      // console.log("解码完成.");
+      // });
       playlistEmitter.on("audiosourcesrendered", () => {
         // console.log("渲染完成.");
         canvasObjArr = document.querySelectorAll(
@@ -570,11 +580,25 @@ export default {
       playlistEmitter.on("timeupdate", (playbackPosition) => {
         if (
           !this.current_video.isSelfTimeupdate ||
-          this.current_video.triggerName === "changeFrame" ||
-          this.current_video.triggerName === "slider"
+          ["changeFrame", "slider", "changeVideoSlider"].includes(
+            this.current_video.triggerName
+          ) ||
+          !this.current_video.play
         ) {
           return playlistEmitter.emit("pause");
         }
+        // console.log("视频更新", playbackPosition, "this.$refs.pipsRange.noUiSlider", this.$refs.pipsRange.noUiSlider, "this.current_video", this.current_video)
+        
+        // console.log('player.currentTime', player.currentTime)
+        if (this.totalVideoTime == Math.floor(player.currentTime)) {
+          this.allPause();
+          // this.current_video.play = false;
+          this.current_video.cur_time = this.current_video.total_time;
+          this.$refs.pipsRange.noUiSlider.set(this.current_video.total_time);
+          this.current_video.isPlayEnd = true;
+          return 
+        }
+        
         // 如果是视频自己自动更新
         this.current_video.cur_time = playbackPosition;
         this.$refs.pipsRange.noUiSlider.set(playbackPosition);
@@ -590,6 +614,8 @@ export default {
         } else if (triggerName === "slider") {
           player.currentTime = this.current_video.cur_time = end;
         }
+        this.current_video.cur_time == this.current_video.total_time &&
+          this.allPause();
       });
     },
     loadWavesurfer(videoUrl, filePath, fileName, videoIndex) {
@@ -608,7 +634,11 @@ export default {
         }
         try {
           service.setText(
-            "视频文件" + fileName + "正在转换中..." + progress.toFixed(2) + "%"
+            "视频文件" +
+              fileName +
+              "正在转换中..." +
+              Number(progress || 0).toFixed(2) +
+              "%"
           );
         } catch (error) {
           console.error(error);
@@ -616,11 +646,13 @@ export default {
       });
       ipcRenderer.on(
         "transform-mp3-reply",
-        (event, { temp_mp3_url, imgName }) => {
+        (event, { temp_mp3_url, imgPath }) => {
           if (isLoad) return;
           isLoad = true;
           service.close();
-          this.video_list[this.video_list.length - 1].poster = imgName;
+          const videoListLen = this.video_list.length - 1;
+          this.video_list[videoListLen].poster = imgPath;
+          // document.getElementById("video-" + videoListLen).poster = imgPath;
           playlist
             .load([
               {
@@ -658,6 +690,7 @@ export default {
           play: false,
           isSelfTimeupdate: true,
           triggerName: null,
+          isPlayEnd: false,
         };
         canvasObjArr = [];
         this.destroyPlayer();
@@ -695,7 +728,9 @@ export default {
         play: false,
         isSelfTimeupdate: true,
         triggerName: null,
+        isPlayEnd: false,
       };
+
       playlistEmitter.emit("clear");
       canvasObjArr = [];
       this.$refs.pipsRange.noUiSlider.set(0);
@@ -704,6 +739,8 @@ export default {
     setCurVideo(file, index) {
       if (this.current_video.index == index) return;
       this.$store.commit("initVideoStatus");
+      this.current_video.cur_time != 0 &&
+        this.$refs.pipsRange.noUiSlider.set(0);
       this.current_video = {
         video_path: file.path,
         fileName: file.name,
@@ -714,6 +751,7 @@ export default {
         play: false,
         isSelfTimeupdate: true,
         triggerName: null,
+        isPlayEnd: false,
       };
       playlistEmitter.emit("clear");
       this.playlistLoaded = false;
@@ -729,6 +767,7 @@ export default {
 
     /* TODO: xgplayer西瓜播放器相关 start */
     initPlayer() {
+      player && this.video_list.length > 1 && this.destroyPlayer();
       player = new Mp4Player({
         id: "player",
         url: this.current_video.src,
@@ -736,30 +775,66 @@ export default {
         volume: this.cur_volume / 100,
         videoInit: true,
         controls: false,
+        closeVideoClick: true,
+        closeVideoDblclick: true,
+        closeVideoTouch: true,
+        closePlayerBlur: true,
+        closeControlsBlur: true,
+        allowPlayAfterEnded: true,
+        allowSeekAfterEnded: true,
+        ignores: ["replay", "error", "fullscreen"],
       });
       player.on("canplay", this.canplay);
-      player.on("play", this.play);
-      player.on("playing", this.playing);
-      player.on("seeking", this.seeking);
-      player.on("pause", this.pause);
-      player.on("timeupdate", this.timeupdate);
+      player.on("ended", this.ended);
       this.$once("hook:beforeDestroy", () => {
         this.destroyPlayer();
       });
     },
-    destroyPlayer() {
-      const eventTable = [
-        "canplay",
-        "play",
-        "playing",
-        "seeking",
-        "pause",
-        "timeupdate",
-      ];
-      for (const it of eventTable) {
-        player.off(it, this[it]);
+    canplay() {
+      if (this.current_video.total_time < 1) {
+        this.current_video.isPlayEnd = false;
+        const totalTime = player.duration - 1;
+        this.$store.commit("setVideoInfo", {
+          video_path: this.current_video.video_path,
+          video_title: this.current_video.fileName,
+          video_w: player.config.width,
+          video_h: player.config.height,
+          video_total_time: player.duration,
+        });
+        this.current_video.total_time = totalTime;
+        player.volume = this.cur_volume / 100;
+        this.$refs.pipsRange.noUiSlider.updateOptions({
+          range: {
+            min: 0,
+            max: totalTime,
+          },
+        });
       }
-      player.destroy(true);
+    },
+    ended() {
+      // player.start(this.current_video.src);
+      // player.src = this.current_video.src;
+      // player.reload();
+      this.current_video.isPlayEnd = true;
+      this.allPause();
+    },
+    destroyPlayer() {
+      try {
+        // const eventTable = [
+        //   "canplay",
+        //   "play",
+        //   "playing",
+        //   "seeking",
+        //   "pause",
+        //   "timeupdate",
+        // ];
+        // for (const it of eventTable) {
+        //   player.off(it, this[it]);
+        // }
+        player && player.destroy(false);
+      } catch (error) {
+        console.error("destroyPlayer :>> ", error);
+      }
     },
     /* xgplayer相关 end */
 
@@ -775,6 +850,7 @@ export default {
       if (player && playlist) {
         this.allPause();
         this.current_video.triggerName = "changeVideoSlider";
+        this.current_video.isPlayEnd = false;
         player.currentTime = progress;
         playlistEmitter.emit("select", progress, progress);
       }
@@ -866,60 +942,57 @@ export default {
         document.removeEventListener("mouseup", mouseUp);
       });
     },
-    canplay() {
-      if (this.current_video.total_time < 1) {
-        this.$store.commit("setVideoInfo", {
-          video_path: this.current_video.video_path,
-          video_title: this.current_video.fileName,
-          video_w: player.config.width,
-          video_h: player.config.height,
-          video_total_time: player.duration,
-        });
-        this.current_video.total_time = player.duration;
-        player.volume = this.cur_volume / 100;
-        this.$refs.pipsRange.noUiSlider.updateOptions({
-          range: {
-            min: 0,
-            max: player.duration,
-          },
-        });
-      }
-    },
-    play() {
-      // console.log("🍉播放");
-    },
-    playing() {
-      // console.log("🍉继续播放");
-    },
-    pause() {
-      // console.log("🍉暂停");
-    },
-    seeking() {
-      // console.log("🍉【seeking】");
-    },
-    timeupdate() {
-      // console.log("🍉【timeupdate】");
-    },
     allPlay() {
+      // if (
+      //   this.current_video.isPlayEnd ||
+      //   this.current_video.cur_time == this.current_video.total_time
+      // ) {
+      //   playlistEmitter.emit("select", 0, 0);
+      //   this.current_video.cur_time != 0 &&
+      //     this.$refs.pipsRange.noUiSlider.set(0);
+      //   this.current_video.cur_time = 0;
+      //   this.current_video.isSelfTimeupdate = true;
+      //   this.current_video.triggerName = null;
+      // }
+      console.log('this.current_video.isPlayEnd', this.current_video.isPlayEnd)
+      if (this.current_video.isPlayEnd) {
+        player.currentTime = 0;
+        playlistEmitter.emit("select", 0, 0);
+        this.$refs.pipsRange.noUiSlider.set(0);
+        this.current_video.isPlayEnd = false;
+      }
       this.current_video.play = true;
-      player?.play();
-      playlistEmitter?.emit("play");
+      if (player && playlistEmitter) {
+        player.play();
+        playlistEmitter.emit("play");
+      }
     },
     allPause() {
       this.current_video.play = false;
-      player?.pause();
-      playlistEmitter?.emit("pause");
+      if (player && playlistEmitter) {
+        player.pause();
+        playlistEmitter.emit("pause");
+      }
     },
     addVideoQuestion(cur_time = 0) {
+      const q_i = this.question_len + 1;
       this.$store.commit("addVideoQuestion", {
         lastSelect: 3,
         cur_time,
-        q_title: "测验 " + (this.question_arr.length + 1),
+        q_title: "测验 " + q_i,
+        q_i,
         q_score: true,
         q_can_watch_result: true,
         q_arr: [],
       });
       this.setCurQuestionIndex(this.question_arr.length - 1);
+      this.closeMenu();
+    },
+    delVideoQuestion(index) {
+      this.$store.commit("delVideoQuestion", index);
+      this.closeMenu();
+      this.cur_test_index = 0;
+      this.setCurQuestionIndex(0);
     },
     setCurQuestionIndex(i) {
       this.$store.commit("setCurQuestionIndex", i);
@@ -1000,22 +1073,26 @@ export default {
       return (pixels * playlist.samplesPerPixel) / playlist.sampleRate;
     },
     secondsToPixels(time) {
-      return (
+      const px =
         (Number(time.toFixed(2)) * playlist.sampleRate) /
-        playlist.samplesPerPixel
-      );
+        playlist.samplesPerPixel;
+      // console.log('time', time, "px", px);
+      return px;
     },
-    showMenu(event) {
+    showMenu(event, type) {
       if (!(player && playlist)) {
         return;
       }
+      this.menuType = type;
       this.menuVisible = true;
       this.$nextTick(() => {
-        this.$refs.contextMenu.focus();
-        this.setMenu(
-          event.pageY,
-          event.pageX + document.getElementById("slider-wrapper").scrollLeft
-        );
+        setTimeout(() => {
+          // this.$refs.contextMenu.focus();
+          this.setMenu(
+            event.pageY,
+            event.pageX + document.getElementById("slider-wrapper").scrollLeft
+          );
+        }, 0);
       });
     },
     setMenu(top, left) {
@@ -1162,8 +1239,10 @@ export default {
       ::v-deep #player {
         padding-top: 0 !important;
         height: 100% !important;
-        .xgplayer-start {
-          display: none !important;
+        .xgplayer-start,
+        .xgplayer-enter,
+        .xgplayer-loading {
+          display: none;
         }
       }
     }

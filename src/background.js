@@ -1,5 +1,3 @@
-'use strict'
-
 import {
   app,
   protocol,
@@ -12,9 +10,9 @@ import { createProtocol } from 'vue-cli-plugin-electron-builder/lib'
 import installExtension, { VUEJS_DEVTOOLS } from 'electron-devtools-installer'
 import fs from "fs-extra";
 import path from "path";
-const isDevelopment = process.env.NODE_ENV !== 'production'
 import "./utils/ipc";
 
+const isDevelopment = process.env.NODE_ENV !== 'production';
 const TEMPDIR = path.join(__dirname, "../static/tempCache");
 const STATICDIR = path.join(__dirname, "..", "/static/icons");
 let tray;
@@ -34,12 +32,14 @@ async function createWindow() {
     height: 768,
     minHeight: 768,
     webPreferences: {
-      nodeIntegrationInWorker: true,
-      scrollBounce: true,
+      // nodeIntegrationInWorker: true,
+      // scrollBounce: true,
       // Use pluginOptions.nodeIntegration, leave this alone
       // See nklayman.github.io/vue-cli-plugin-electron-builder/guide/security.html#node-integration for more info
-      nodeIntegration: process.env.ELECTRON_NODE_INTEGRATION,
-      contextIsolation: !process.env.ELECTRON_NODE_INTEGRATION
+      // nodeIntegration: process.env.ELECTRON_NODE_INTEGRATION,
+      // contextIsolation: !process.env.ELECTRON_NODE_INTEGRATION
+      nodeIntegration: true,
+      contextIsolation: false
     }
   })
   if (process.env.WEBPACK_DEV_SERVER_URL) {

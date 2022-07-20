@@ -5,6 +5,7 @@ Vue.use(Vuex);
 
 export default new Vuex.Store({
   state: {
+    question_len: 0,
     cur_question_arr_index: 0,
     videoInfo: {
       video_path: "",
@@ -18,14 +19,19 @@ export default new Vuex.Store({
   mutations: {
     addVideoQuestion(state, payload) {
       state.question_arr.push(payload);
+      state.question_len++;
+    },
+    delVideoQuestion(state, index) {
+      state.cur_question_arr_index = 0;
+      state.question_arr.splice(index, 1);
     },
     setVideoInfo(state, payload = {}) {
       const {
         video_path = "",
-          video_title = "",
-          video_w = 0,
-          video_h = 0,
-          video_total_time = 0,
+        video_title = "",
+        video_w = 0,
+        video_h = 0,
+        video_total_time = 0,
       } = payload;
       state.videoInfo.video_path = video_path;
       state.videoInfo.video_title = video_title;
